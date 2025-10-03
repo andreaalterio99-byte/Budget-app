@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Calendario Spese Annuale</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; }
+  #controls { margin: 10px; }
+  #calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 20px; }
+  .day { border: 1px solid #ccc; padding: 10px; min-height: 50px; position: relative; cursor: pointer; }
+  .green { background-color: #b6f2b6; }
+  .yellow { background-color: #fff8a6; }
+  .red { background-color: #f5a6a6; color: #000; font-weight: bold; }
+  .day-number { font-size: 14px; display: block; }
+  .expense { font-size: 12px; display: block; margin-top: 5px; }
+  #saldo, #recupero, #budgetDisplay { margin-top: 10px; font-size: 18px; }
+  .popup { display: none; position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+           background: white; border: 1px solid #ccc; border-radius: 5px; padding: 5px;
+           box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
+  .popup button { margin: 3px; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; }
+  .btn-green { background: #b6f2b6; }
+  .btn-yellow { background: #fff8a6; }
+  .btn-red { background: #f5a6a6; }
+</style>
+</head>
+<body>
+
+<h2>Calendario Spese Annuale</h2>
+
+<div id="controls">
+  Mese: <select id="monthSelect"></select>
+  <button id="budgetBtn">Imposta Budget</button>
+</div>
+<div id="budgetDisplay">Budget giornaliero: 6.00€</div>
+<div id="calendar"></div>
+<div id="saldo">Saldo: 200€</div>
+<div id="recupero">Giorni da recuperare: 0</div>
+
+<script>
+const calendar = document.getElementById("calendar");
+const saldoEl = document.getElementById("saldo");
+const recuperoEl = document.getElementById("recupero");
+const budgetBtn = document.getElementById("budgetBtn");
+const budgetDisplay = document.getElementById("budgetDisplay");
+const monthSelect = document.getElementById("monthSelect");
+
+let saldo = 200;
+let debitoGiorni = 0;
+let budgetGiornaliero = 6;
+
+const months = [
+  {name: "Settembre 2025", days: 30},
+  {name: "Ottobre 2025", days: 31},
+  {name: "Novembre 2025", days: 30},
+  {name: "Dicembre 2025", days: 31},
+  {name: "Gennaio 2026", days: 31},
+  {name: "Febbraio 2026", days: 28},
+  {name: "Marzo 2026", days: 31},
+  {name: "Aprile 2026", days: 30},
+  {name: "Maggio 2026", days: 31},
+  {name: "Giugno 2026", days: 30},
+  {name: "Luglio 2026", days: 31},
+  {name: "Agosto 2026", days: 31},
+];
+
+let monthlyData = {};
+months.forEach((m,i)=> monthlyData[i]={days:m.days, spese:Array(m.days).fill({color:"",value:0})});
+
+// carica dati salvati
+const savedData = localStorage.getItem("speseAnnuali");
+if(savedData){ monthlyData = JSON.parse(savedData); }
+
+const savedBudget = localStorage.getItem("budgetAnnuale");
+if(savedBudget){
+  const b = JSON.parse(savedBudget);
+  saldo = b.saldo;
+  budgetGiornaliero = b.budgetGiornaliero;
+  saldoEl.textContent = "Saldo: "+saldo.toFixed(2)+"€";
+  budgetDisplay.textContent = "Budget giornaliero: "+budgetGiornaliero.toFixed(2)+"€";
+}
+
+months.forEach((m,i)=>{
+  const opt=document.createElement("option");
+  opt.value=i; opt.textContent=m.name;
+  monthSelect.appendChild(opt);
+});
+
+let currentMonth=0;
+
+function createCalendar(monthIndex){
+  calendar.innerHTML="";
+  const data = monthlyData[monthIndex];
+  for(let i=0;i<data.days;i++){
+    const day=document.createElement("div");
+    day.classList.add("day");
+    const sp = data.spese[i] || {color:"",value:0};
+    day.innerHTML=`
+      <span class="day-number">${i+1}</span>
+      <span class="expense">${sp.value>0?sp.value+"€":""}</span>
+      <div class="popup">
+        <button class="btn-green">Verde</button>
+        <button class="btn-yellow">Giallo</button>
+        <button class="btn-red">Rosso</button>
+      </div>
+    `;
+    if(sp.color) day.classList.add(sp.color);
+    day.addEventListener("click",()=>togglePopup(day,i));
+    calendar.appendChild(day);
+  }
+}
+
+function togglePopup(dayElement, dayIndex){
+  const popup=dayElement.querySelector(".popup");
+  document.querySelectorAll(".popup").forEach(p=>p.style.display="none");
+  popup.style.display="block";
+
+  popup.querySelector(".btn-green").onclick=()=>setColor(dayElement,dayIndex,"verde");
+  popup.querySelector(".btn-yellow").onclick=()=>setColor(dayElement,dayIndex,"giallo");
+  popup.querySelector(".btn-red").onclick=()=>setColor(dayElement,dayIndex,"rosso");
+}
+
+function setColor(dayElement, dayIndex, choice){
+  const expenseEl = dayElement.querySelector(".expense");
+  dayElement.classList.remove("green","yellow","red");
+  expenseEl.textContent="";
+
+  let spesa=0;
+
+  if(choice==="verde"){
+    dayElement.classList.add("green");
+    debitoGiorni -=1;
+  } else if(choice==="giallo"){
+    dayElement.classList.add("yellow");
+    saldo -= 3;
+    debitoGiorni -= 0.5;
+  } else if(choice==="rosso"){
+    const amount = prompt("Quanto hai speso oggi?");
+    if(amount){
+      spesa=parseFloat(amount);
+      dayElement.classList.add("red");
+      expenseEl.textContent=spesa+"€";
+      saldo -= spesa;
+
+      if(spesa>budgetGiornaliero){
+        debitoGiorni += (spesa-budgetGiornaliero)/budgetGiornaliero;
+      }
+    }
+  }
+
+  if(debitoGiorni<0) debitoGiorni=0;
+
+  saldoEl.textContent="Saldo: "+saldo.toFixed(2)+"€";
+  recuperoEl.textContent="Giorni da recuperare: "+debitoGiorni.toFixed(2);
+
+  dayElement.querySelector(".popup").style.display="none";
+
+  monthlyData[currentMonth].spese[dayIndex]={color:choice,value:spesa};
+  localStorage.setItem("speseAnnuali", JSON.stringify(monthlyData));
+  localStorage.setItem("budgetAnnuale", JSON.stringify({saldo,budgetGiornaliero}));
+}
+
+document.addEventListener("click",e=>{
+  if(!e.target.closest(".day")) document.querySelectorAll(".popup").forEach(p=>p.style.display="none");
+});
+
+monthSelect.addEventListener("change",()=>{
+  currentMonth=parseInt(monthSelect.value);
+  createCalendar(currentMonth);
+});
+
+budgetBtn.addEventListener("click",()=>{
+  const newBudget=prompt("Inserisci il budget del mese:");
+  if(newBudget){
+    saldo=parseFloat(newBudget);
+    budgetGiornaliero=saldo/months[currentMonth].days;
+    saldoEl.textContent="Saldo: "+saldo.toFixed(2)+"€";
+    budgetDisplay.textContent="Budget giornaliero: "+budgetGiornaliero.toFixed(2)+"€";
+    localStorage.setItem("budgetAnnuale", JSON.stringify({saldo,budgetGiornaliero}));
+  }
+});
+
+createCalendar(currentMonth);
+</script>
+</body>
+</html>
